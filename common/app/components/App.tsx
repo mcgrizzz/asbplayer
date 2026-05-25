@@ -123,6 +123,7 @@ const getExtension = (fileName: string) => {
 };
 
 async function extractDropFileHandles(items: DataTransferItemList): Promise<FileSystemFileHandle[] | undefined> {
+    if (!window.isSecureContext) return; // Chromium error due to getAsFileSystemHandle: RESULT_CODE_KILLED_BAD_MESSAGE
     const handlePromises: Promise<any>[] = [];
 
     for (let i = 0; i < items.length; ++i) {
@@ -1356,17 +1357,16 @@ function App({
                     return;
                 }
 
-                // FIXME: Re-enable once we know how to fix or workaround RESULT_CODE_KILLED_BAD_MESSAGE crash
-                // if (dataTransfer.items && dataTransfer.items.length > 0) {
-                //     void extractDropFileHandles(dataTransfer.items)
-                //         .then((fileHandles) => persistFileSessionHandles(fileHandles))
-                //         .catch((e) => {
-                //             console.warn('Failed to collect dropped file handles:', e);
-                //         });
-                // }
+                if (dataTransfer.items && dataTransfer.items.length > 0) {
+                    void extractDropFileHandles(dataTransfer.items)
+                        .then((fileHandles) => persistFileSessionHandles(fileHandles))
+                        .catch((e) => {
+                            console.warn('Failed to collect dropped file handles:', e);
+                        });
+                }
             }
         },
-        [inVideoPlayer, handleError, handleFiles, handleDirectory, ankiDialogOpen, t]
+        [inVideoPlayer, handleError, handleFiles, handleDirectory, ankiDialogOpen, t, persistFileSessionHandles]
     );
 
     const handleFileInputChange = useCallback(() => {

@@ -1,6 +1,11 @@
 import { Progress, Tokenization } from '@project/common';
-import { CardInfo } from '@project/common/anki';
-import { DictionaryProvider, TokenResults } from '@project/common/dictionary-db';
+import type {
+    CardInfoForDB,
+    DictionaryProvider,
+    DictionaryWaniKaniAssignmentRecordWithStatus,
+    DictionaryWaniKaniSubjectRecord,
+    TokenResults,
+} from '@project/common/dictionary-db';
 import {
     defaultSettings,
     dictionaryTrackEnabled,
@@ -10,7 +15,6 @@ import {
     TokenStatusConfig,
     TokenStatus,
 } from '@project/common/settings';
-import { WaniKaniAssignment } from '@project/common/wanikani';
 
 export const REVIEW_DUES = [0, 1, 7] as const; // 0 = due today, 1 = due within a day, 7 = due within a week
 
@@ -29,15 +33,15 @@ export type DictionaryStatisticsAnkiDueCardsSnapshot = Record<number, number[]>;
 export interface DictionaryStatisticsAnkiSnapshot {
     available?: boolean;
     progress?: Progress;
-    cardsInfo: Record<number, CardInfo>;
+    cardsInfo: Record<number, CardInfoForDB>;
     dueCards: DictionaryStatisticsAnkiDueCardsSnapshot;
+    cardsStatus?: Record<number, TokenStatus>;
 }
-
-export type DictionaryStatisticsWaniKaniReviewAssignmentsSnapshot = Record<number, WaniKaniAssignment>;
 
 export interface DictionaryStatisticsWaniKaniSnapshot {
     available?: boolean;
-    reviewAssignments: DictionaryStatisticsWaniKaniReviewAssignmentsSnapshot;
+    assignments: DictionaryWaniKaniAssignmentRecordWithStatus[];
+    subjects: Record<number, DictionaryWaniKaniSubjectRecord>;
 }
 
 export type DictionaryStatisticsWaniKaniSnapshots = Record<number, DictionaryStatisticsWaniKaniSnapshot>;
@@ -93,7 +97,7 @@ export class DictionaryStatistics {
         this.mediaId = mediaId;
         this.rawTrackSnapshots = new Map();
         this.settings = { dictionaryTracks: defaultSettings.dictionaryTracks };
-        this.anki = { cardsInfo: {}, dueCards: {} };
+        this.anki = { cardsInfo: {}, dueCards: {}, cardsStatus: {} };
         this.waniKani = {};
         this.lastCancelledAt = 0;
     }
@@ -105,7 +109,7 @@ export class DictionaryStatistics {
     reset(): void {
         const startTime = Date.now();
         this.rawTrackSnapshots.clear();
-        this.anki = { cardsInfo: {}, dueCards: {} };
+        this.anki = { cardsInfo: {}, dueCards: {}, cardsStatus: {} };
         this.waniKani = {};
         void this._publish(undefined, startTime);
         this.lastCancelledAt = Date.now();
@@ -145,16 +149,6 @@ export class DictionaryStatistics {
         void this._publish(this._snapshot(), startTime);
     }
 
-    updateAnkiSnapshot(anki: Partial<DictionaryStatisticsAnkiSnapshot>): void {
-        const startTime = Date.now();
-        const startedAt = this.anki.progress?.startedAt ?? anki.progress?.startedAt ?? Date.now();
-        const progress = anki.progress ? { ...anki.progress, startedAt } : this.anki.progress;
-        const cardsInfo = anki.cardsInfo ? { ...this.anki.cardsInfo, ...anki.cardsInfo } : this.anki.cardsInfo;
-        this.anki = { ...this.anki, ...anki, progress, cardsInfo };
-        if (!this.hasStatistics()) return;
-        void this._publish(this._snapshot(), startTime);
-    }
-
     replaceWaniKaniSnapshots(waniKani: DictionaryStatisticsWaniKaniSnapshots): void {
         const startTime = Date.now();
         this.waniKani = { ...waniKani };
@@ -165,7 +159,6 @@ export class DictionaryStatistics {
     async refreshDictionaryTokens(profile: string | undefined): Promise<void> {
         const startTime = Date.now();
         const dictionaryTracks = await this.settingsProvider.getSingle('dictionaryTracks');
-        for (const dt of dictionaryTracks) (dt as any).dictionaryWaniKaniApiToken = '';
         const settings = { dictionaryTracks };
         this.settings = settings;
         await Promise.all(

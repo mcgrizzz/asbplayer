@@ -26,7 +26,7 @@ import {
     _buildIdHealthCheck,
     _clearBuildIds,
     DictionaryAnkiCardKey,
-    DictionaryAnkiCardRecord,
+    _DictionaryAnkiCardRecord,
     DictionaryMetaKey,
     DictionaryTokenRecord,
     _ensureBuildId,
@@ -34,12 +34,14 @@ import {
     _getFromSourceBulk,
     _saveRecordBulk,
     TrackStateForDB,
+    CardInfoForDB,
 } from '@project/common/dictionary-db';
 
 /**
  * If adding/removing fields here, add/remove the UI helperText in the settings tab
  */
 interface AnkiCacheSettingsDependencies {
+    version?: number; // Bump to force a cache rebuild when needed
     ankiConnectUrl: string;
     dictionaryYomitanUrl: string;
     dictionaryYomitanParser: string;
@@ -54,11 +56,11 @@ type CardsForDB = Map<
     number,
     {
         noteId: number;
-        deckName: string;
         fields: Map<string, string>;
         modifiedAt: number;
         statuses: Map<number, TokenStatus>;
         suspended: boolean;
+        data: CardInfoForDB;
     }
 >;
 
@@ -294,7 +296,7 @@ async function _getAnkiCardsByNoteIdBulk(
     db: _DictionaryDatabase,
     profile: string,
     noteIds: number[]
-): Promise<Map<number, DictionaryAnkiCardRecord[]>> {
+): Promise<Map<number, _DictionaryAnkiCardRecord[]>> {
     if (!noteIds.length) return new Map();
     return db.ankiCards
         .where('[profile+noteId]')
@@ -302,7 +304,7 @@ async function _getAnkiCardsByNoteIdBulk(
         .toArray()
         .then((ankiCards) => {
             if (!ankiCards.length) return new Map();
-            const cardRecordsByNoteId = new Map<number, DictionaryAnkiCardRecord[]>();
+            const cardRecordsByNoteId = new Map<number, _DictionaryAnkiCardRecord[]>();
             for (const ankiCard of ankiCards) {
                 const val = cardRecordsByNoteId.get(ankiCard.noteId);
                 if (val) val.push(ankiCard);
@@ -310,6 +312,10 @@ async function _getAnkiCardsByNoteIdBulk(
             }
             return cardRecordsByNoteId;
         });
+}
+
+function isAnkiSource(source: DictionaryTokenSource): boolean {
+    return source === DictionaryTokenSource.ANKI_WORD || source === DictionaryTokenSource.ANKI_SENTENCE;
 }
 
 /**
@@ -339,7 +345,7 @@ async function _deleteCardBulk(
                     .where('cardIds')
                     .anyOf(orphanedCardIds)
                     .distinct()
-                    .filter((r) => r.track === track && r.profile === profile)
+                    .filter((r) => r.track === track && r.profile === profile && isAnkiSource(r.source))
                     .modify((record, ref) => {
                         const remainingCardIds = record.cardIds.filter((id) => !cardIdsSet.has(id));
                         if (remainingCardIds.length === record.cardIds.length) return;
@@ -469,19 +475,23 @@ async function _syncTrackStatesWithAnki(
         for (const cardId of noteInfo.cards) modifiedCardIdsSet.add(cardId);
     }
 
-    const modifiedCardsDeck: Map<number, string> = new Map();
+    const modifiedCardsDeck: Map<number, CardInfoForDB> = new Map();
     if (modifiedNotes.length) {
         const modifiedCardIds = Array.from(modifiedCardIdsSet);
         for (const cardInfo of await anki.cardsInfo(modifiedCardIds, async (progress) => {
             await _updateBuildAnkiCacheProgress(db, buildId, activeTracks, progress, [], statusUpdates, true);
         })) {
-            modifiedCardsDeck.set(cardInfo.cardId, cardInfo.deckName); // cardsInfo is much slower than notesInfo so we try to call it only if needed
+            modifiedCardsDeck.set(cardInfo.cardId, {
+                deckName: cardInfo.deckName,
+                modelName: cardInfo.modelName,
+                due: cardInfo.due,
+            }); // cardsInfo is much slower than notesInfo so we try to call it only if needed
         }
         const dts = Array.from(trackStates.values()).map((ts) => ts.dt);
         for (let i = modifiedNotes.length - 1; i >= 0; i--) {
             let modified = false;
             for (const dt of dts) {
-                if (!modifiedNotes[i].cards.some((c) => _hasDeck(dt, modifiedCardsDeck.get(c)!))) continue;
+                if (!modifiedNotes[i].cards.some((c) => _hasDeck(dt, modifiedCardsDeck.get(c)!.deckName))) continue;
                 if (!_hasField(dt, Object.keys(modifiedNotes[i].fields))) continue;
                 modified = true;
                 break;
@@ -511,11 +521,11 @@ async function _syncTrackStatesWithAnki(
             for (const cardId of modifiedNote.cards) {
                 modifiedCards.set(cardId, {
                     noteId: modifiedNote.noteId,
-                    deckName: modifiedCardsDeck.get(cardId)!,
                     fields,
                     modifiedAt: modifiedNote.mod,
                     statuses: new Map(),
                     suspended: suspendedCards.has(cardId),
+                    data: modifiedCardsDeck.get(cardId)!,
                 });
             }
         }
@@ -533,7 +543,7 @@ async function _syncTrackStatesWithAnki(
         }
         if (!modifiedCardIdsSet.has(cardId)) continue; // Card unchanged
         const modifiedCard = modifiedCards.get(cardId)!;
-        if (!_hasDeck(ts.dt, modifiedCard.deckName)) {
+        if (!_hasDeck(ts.dt, modifiedCard.data.deckName)) {
             orphanedTrackCardIds.get(track)!.push(cardId); // Card no longer in relevant deck
             continue;
         }
@@ -570,7 +580,7 @@ async function _buildAnkiCardStatuses(
     const matureCutoff = ts.dt.dictionaryAnkiMatureCutoff;
     const gradCutoff = Math.ceil(matureCutoff / 2);
     let numRemaining = Array.from(modifiedCards.values()).filter(
-        (card) => _hasDeck(ts.dt, card.deckName) && _hasField(ts.dt, Array.from(card.fields.keys()))
+        (card) => _hasDeck(ts.dt, card.data.deckName) && _hasField(ts.dt, Array.from(card.fields.keys()))
     ).length;
 
     numRemaining = _processAnkiCardStatuses(
@@ -779,7 +789,7 @@ async function _buildTokensForTracks(
                 const texts: string[] = [];
                 const ankiFields = new Set([...ts.dt.dictionaryAnkiWordFields, ...ts.dt.dictionaryAnkiSentenceFields]);
                 for (const card of modifiedCardsBatch.values()) {
-                    if (!_hasDeck(ts.dt, card.deckName)) continue;
+                    if (!_hasDeck(ts.dt, card.data.deckName)) continue;
                     for (const ankiField of ankiFields) {
                         const field = card.fields.get(ankiField);
                         if (field) texts.push(field);
@@ -813,7 +823,7 @@ async function _buildTokensForTracks(
                 const sourceTokensMap = partialTokenRecordsByTrack.get(track)!;
                 const sourceAnkiFieldsMap = ankiFieldsMap.get(track)!;
                 for (const [cardId, card] of modifiedCardsBatch.entries()) {
-                    if (!_hasDeck(ts.dt, card.deckName)) continue;
+                    if (!_hasDeck(ts.dt, card.data.deckName)) continue;
                     for (const [source, ankiFields] of sourceAnkiFieldsMap.entries()) {
                         for (const ankiField of ankiFields) {
                             const tokenCardsMap = sourceTokensMap.get(source)!;
@@ -841,7 +851,7 @@ async function _buildTokensForTracks(
             }
 
             const records: DictionaryTokenRecord[] = [];
-            const ankiCards: DictionaryAnkiCardRecord[] = [];
+            const ankiCards: _DictionaryAnkiCardRecord[] = [];
             for (const track of trackStates.keys()) {
                 for (const [source, tokenCardsMap] of partialTokenRecordsByTrack.get(track)!.entries()) {
                     const tokenRecordMap = await _getFromSourceBulk(
@@ -885,6 +895,7 @@ async function _buildTokensForTracks(
                         modifiedAt: updatedCard.modifiedAt,
                         status,
                         suspended: updatedCard.suspended,
+                        data: updatedCard.data,
                     });
                 }
             }
@@ -924,7 +935,7 @@ async function _saveTokensForDB(
     profile: string,
     trackStates: Map<number, TrackStateForDB>,
     records: DictionaryTokenRecord[],
-    ankiCards: DictionaryAnkiCardRecord[],
+    ankiCards: _DictionaryAnkiCardRecord[],
     modifiedCardsBatch: CardsForDB,
     partialTokenRecordsByTrack: Map<
         number,
@@ -942,7 +953,7 @@ async function _saveTokensForDB(
             .where('cardIds')
             .anyOf(Array.from(modifiedCardsBatch.keys()))
             .distinct()
-            .filter((r) => trackStates.has(r.track) && r.profile === profile)
+            .filter((r) => trackStates.has(r.track) && r.profile === profile && isAnkiSource(r.source))
             .modify((record, ref) => {
                 // We want tokens that were not updated but refers to updated cards (e.g. field value changed, different tokens)
                 if (partialTokenRecordsByTrack.get(record.track)!.get(record.source)!.has(record.token)) return;

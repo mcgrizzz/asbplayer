@@ -31,6 +31,7 @@ interface WaniKaniErrorResponse {
 export interface WaniKaniCollectionResult<T> {
     data: T[];
     dataUpdatedAt: string | null;
+    totalCount: number | null;
 }
 
 export interface WaniKaniUserData {
@@ -137,12 +138,10 @@ export class WaniKani {
     async assignments(options?: {
         subjectTypes?: WaniKaniSubjectType[];
         updatedAfter?: string;
-        availableBefore?: string;
     }): Promise<WaniKaniCollectionResult<WaniKaniAssignment>> {
         return this._getPaginated<WaniKaniAssignment>('/assignments', {
             subject_types: options?.subjectTypes?.join(','),
             updated_after: options?.updatedAfter,
-            available_before: options?.availableBefore,
         });
     }
 
@@ -181,14 +180,16 @@ export class WaniKani {
     ): Promise<WaniKaniCollectionResult<T>> {
         const data: T[] = [];
         let dataUpdatedAt: string | null = null;
+        let totalCount: number | null = null;
         let nextUrl: string | null = this._url(path, params);
         while (nextUrl) {
             const page: WaniKaniCollection<T> = await this._getJson(nextUrl);
             if (!dataUpdatedAt) dataUpdatedAt = page.data_updated_at;
+            if (totalCount === null) totalCount = page.total_count;
             data.push(...page.data);
             nextUrl = page.pages.next_url;
         }
-        return { data, dataUpdatedAt };
+        return { data, dataUpdatedAt, totalCount };
     }
 
     private async _getJson<T>(url: string): Promise<T> {

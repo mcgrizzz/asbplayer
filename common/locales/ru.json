@@ -644,6 +644,7 @@
         "occurrences": "Occurrences",
         "sentenceStatistics": "Sentence statistics",
         "currentWatch": "Current watch",
+        "projected": "Projected",
         "projectedRewatch": "Projected rewatch",
         "rewatchSelect": "Rewatch",
         "rewatchOption": "Rewatch #{{rewatch}}",
@@ -654,6 +655,7 @@
         "noMoreRewatches": "There will be no more mining after all i+1 sentences this session.",
         "totalSentences": "Total sentences",
         "knownSentences": "Known sentences",
+        "projectMature": "Treat upcoming material as mature",
         "anki": {
             "ankiStatistics": "Anki statistics",
             "dueByToday": "Due by today",
@@ -662,18 +664,27 @@
             "suspended": "Suspended",
             "deckBreakdown": "Deck breakdown",
             "modelBreakdown": "Model breakdown",
+            "newCardsCount": "{{count}} new cards",
+            "projectReviewedCards": "Treat all reviewed cards as mature",
+            "knownDeckWords": "Anki known words",
             "ankiNeedsToBeRunning": "Anki needs to be running to load statistics.",
             "noDeckBreakdown": "No matching Anki cards were found for this media.",
             "info": {
-                "ankiStatistics": "How your Anki cards match up with the words in this media."
+                "ankiStatistics": "How your Anki cards match up with the words in this media.",
+                "projectedCards": "Preview your stats by treating past cards or new cards (in the order they will be introduced) as Mature."
             }
         },
         "waniKani": {
             "waniKaniStatistics": "WaniKani statistics",
+            "projectLevel": "WaniKani level",
+            "projectedWords": "WaniKani known words",
+            "projectedLevel": "Level {{level}}",
+            "currentKnowledge": "Current WaniKani",
             "waniKaniNeedsToBeAvailable": "WaniKani statistics could not be loaded.",
             "noWaniKaniBreakdown": "No matching WaniKani vocabulary was found for this media.",
             "info": {
-                "waniKaniStatistics": "How your upcoming WaniKani reviews match up with the words in this media."
+                "waniKaniStatistics": "How your upcoming WaniKani reviews match up with the words in this media.",
+                "projectedLevel": "Preview your stats by treating all words at or below a level as Mature."
             }
         },
         "info": {

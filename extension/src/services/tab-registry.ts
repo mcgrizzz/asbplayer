@@ -71,7 +71,7 @@ export default class TabRegistry {
                 this._removeAsbplayersInTab(tabId);
             }
         });
-        
+
         // A replaced tab (e.g. Chrome reactivating a discarded tab under a new id) fires
         // onReplaced, not onRemoved, for the old id...without this the old id's bound
         // media would remain in the registry forever.

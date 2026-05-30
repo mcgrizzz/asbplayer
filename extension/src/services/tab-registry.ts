@@ -71,6 +71,14 @@ export default class TabRegistry {
                 this._removeAsbplayersInTab(tabId);
             }
         });
+        
+        // A replaced tab (e.g. Chrome reactivating a discarded tab under a new id) fires
+        // onReplaced, not onRemoved, for the old id...without this the old id's bound
+        // media would remain in the registry forever.
+        browser.tabs.onReplaced.addListener((_addedTabId, removedTabId) => {
+            this._removeVideoElementsInTab(removedTabId);
+            this._removeAsbplayersInTab(removedTabId);
+        });
     }
 
     private async _fetchVideoElementState(): Promise<{ [key: string]: VideoElement }> {

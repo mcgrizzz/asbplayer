@@ -1,5 +1,6 @@
 import { SettingsProvider, ankiSettingsKeys } from '@project/common/settings';
 import {
+    BoundMedia,
     LoadSubtitlesCommand,
     MineSubtitleCommand,
     SeekTimestampCommand,
@@ -143,6 +144,37 @@ export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistr
 
                 resolve();
             });
+        });
+    };
+    client.onGetBoundMedia = async (): Promise<BoundMedia[]> => {
+        const videoElements = await tabRegistry.activeVideoElements();
+        const allTabs = await browser.tabs.query({});
+        const tabStateById = new Map<number, { active: boolean; discarded: boolean }>();
+
+        for (const tab of allTabs) {
+            if (tab.id !== undefined) {
+                tabStateById.set(tab.id, { active: tab.active ?? false, discarded: tab.discarded ?? false });
+            }
+        }
+
+        const focusedTabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        const focusedTabId = focusedTabs[0]?.id;
+
+        return videoElements.map((videoElement) => {
+            const tabState = tabStateById.get(videoElement.id);
+            return {
+                tabId: videoElement.id,
+                src: videoElement.src,
+                title: videoElement.title,
+                faviconUrl: videoElement.faviconUrl,
+                subscribed: videoElement.subscribed,
+                synced: videoElement.synced,
+                loadedSubtitles: videoElement.loadedSubtitles,
+                syncedTimestamp: videoElement.syncedTimestamp,
+                active: tabState?.active ?? false,
+                focused: videoElement.id === focusedTabId,
+                discarded: tabState?.discarded ?? false,
+            };
         });
     };
 };

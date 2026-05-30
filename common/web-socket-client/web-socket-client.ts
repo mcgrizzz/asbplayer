@@ -40,6 +40,30 @@ export interface SeekTimestampCommand {
     };
 }
 
+export interface GetBoundMediaCommand {
+    command: 'get-bound-media';
+    messageId: string;
+    body: {};
+}
+
+export interface BoundMedia {
+    tabId: number;
+    src: string;
+    title?: string;
+    faviconUrl?: string;
+    subscribed: boolean;
+    synced: boolean;
+    loadedSubtitles: boolean;
+    syncedTimestamp?: number;
+    active: boolean;
+    focused: boolean;
+    discarded: boolean;
+}
+
+interface GetBoundMediaResponseBody {
+    media: BoundMedia[];
+}
+
 export class WebSocketClient {
     private _socket?: WebSocket;
     private _pingInterval?: NodeJS.Timeout;
@@ -50,6 +74,7 @@ export class WebSocketClient {
     onMineSubtitle?: (command: MineSubtitleCommand) => Promise<boolean>;
     onLoadSubtitles?: (command: LoadSubtitlesCommand) => Promise<void>;
     onSeekTimestamp?: (command: SeekTimestampCommand) => Promise<void>;
+    onGetBoundMedia?: () => Promise<BoundMedia[]>;
 
     get socket() {
         return this._socket;
@@ -130,6 +155,15 @@ export class WebSocketClient {
                             body: {},
                         };
                         this._socket?.send(JSON.stringify(response));
+                    } else if (payload.command === 'get-bound-media') {
+                        const messageId = payload.messageId;
+                        const media = (await this.onGetBoundMedia?.()) ?? [];
+                        const response: Response<GetBoundMediaResponseBody> = {
+                            command: 'response',
+                            messageId,
+                            body: { media },
+                        };
+                        this._socket?.send(JSON.stringify(response));
                     }
                 }
             };
@@ -199,5 +233,6 @@ export class WebSocketClient {
         this.onMineSubtitle = undefined;
         this.onSeekTimestamp = undefined;
         this.onLoadSubtitles = undefined;
+        this.onGetBoundMedia = undefined;
     }
 }

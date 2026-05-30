@@ -103,12 +103,64 @@ asbplayer, as a WebSocket client, responds to the following commands from a WebS
 }
 ```
 
+### `get-bound-media`
+
+Returns every `<video>` element asbplayer is currently tracking, keyed by tab and `src`.
+
+#### Request
+
+```javascript
+{
+    "command": "get-bound-media",
+    // Message ID to correlate with asbplayer's response
+    "messageId": "9f1c2b3a-4d5e-6f70-8190-a1b2c3d4e5f6",
+    "body": {}
+}
+```
+
+#### Response
+
+```javascript
+{
+    "command": "response",
+    // Same message ID received in request
+    "messageId": "9f1c2b3a-4d5e-6f70-8190-a1b2c3d4e5f6",
+    "body": {
+        "media": [{
+            // ID of the tab the video element lives in
+            "tabId": 123,
+            // The video element's src; serves as the media's identifier
+            "src": "https://example.com/video.mp4",
+            // Title of the tab
+            "title": "Example video",
+            // Favicon of the tab
+            "faviconUrl": "https://example.com/favicon.ico",
+            // Whether the video element is subscribed to extension messages
+            "subscribed": true,
+            // Whether subtitles have been synced to the video element
+            "synced": true,
+            // Whether a non-empty subtitle track is loaded
+            "loadedSubtitles": true,
+            // When syncing occurred (epoch milliseconds), if synced
+            "syncedTimestamp": 1717000000000,
+            // Whether the tab is the active tab of its window
+            "active": true,
+            // Whether the tab is the active tab of the currently focused window
+            "focused": true,
+            // Whether the tab has been discarded (unloaded from memory) - acting on it may fail
+            "discarded": false
+        }]
+    }
+}
+```
+
 ## HTTP-based API
 
 The WebSocket server also implements an HTTP-based API which can trigger the commands above.
 
 - `POST asbplayer/load-subtitles` ([script](https://github.com/asbplayer/asbplayer/blob/main/scripts/web-socket-server/cli/load-subtitles))
 - `POST asbplayer/seek` ([script](https://github.com/asbplayer/asbplayer/blob/main/scripts/web-socket-server/cli/seek))
+- `GET asbplayer/bound-media` ([script](https://github.com/asbplayer/asbplayer/blob/main/scripts/web-socket-server/cli/bound-media))
 
 ## AnkiConnect proxy
 

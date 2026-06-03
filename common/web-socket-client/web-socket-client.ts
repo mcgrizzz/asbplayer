@@ -1,3 +1,7 @@
+import type { SubtitleTrack } from '../src/model';
+
+export type { SubtitleTrack };
+
 export interface MineSubtitleCommand {
     command: 'mine-subtitle';
     messageId: string;
@@ -47,17 +51,12 @@ export interface GetBoundMediaCommand {
 }
 
 export interface BoundMedia {
-    tabId: number;
-    src: string;
+    id: string; // Derived from a hash of `streaming:<tabId>:<src>` or `local:<asbplayerId>`.
+    type: 'streaming' | 'local';
     title?: string;
     faviconUrl?: string;
-    subscribed: boolean;
-    synced: boolean;
-    loadedSubtitles: boolean;
-    syncedTimestamp?: number;
+    loadedSubtitles: SubtitleTrack[];
     active: boolean;
-    focused: boolean;
-    discarded: boolean;
 }
 
 interface GetBoundMediaResponseBody {
@@ -156,14 +155,16 @@ export class WebSocketClient {
                         };
                         this._socket?.send(JSON.stringify(response));
                     } else if (payload.command === 'get-bound-media') {
-                        const messageId = payload.messageId;
-                        const media = (await this.onGetBoundMedia?.()) ?? [];
-                        const response: Response<GetBoundMediaResponseBody> = {
-                            command: 'response',
-                            messageId,
-                            body: { media },
-                        };
-                        this._socket?.send(JSON.stringify(response));
+                        if (this.onGetBoundMedia !== undefined) {
+                            const messageId = payload.messageId;
+                            const media = await this.onGetBoundMedia();
+                            const response: Response<GetBoundMediaResponseBody> = {
+                                command: 'response',
+                                messageId,
+                                body: { media },
+                            };
+                            this._socket?.send(JSON.stringify(response));
+                        }
                     }
                 }
             };

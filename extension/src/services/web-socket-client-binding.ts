@@ -19,6 +19,30 @@ import {
 
 let client: WebSocketClient | undefined;
 
+// Derives a human-readable title from a subtitle file name by dropping its extension.
+const withoutExtension = (fileName: string) => {
+    const dot = fileName.lastIndexOf('.');
+    return dot > 0 ? fileName.substring(0, dot) : fileName;
+};
+
+// cyrb53 string hash...should be collision resistant and fast to compute
+const cyrb53 = (str: string) => {
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+
+    for (let i = 0; i < str.length; i++) {
+        const ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+};
+
+const boundMediaId = (key: string) => cyrb53(key);
+
 export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistry: TabRegistry) => {
     client?.unbind();
     const url = await settings.getSingle('webSocketServerUrl');
@@ -148,34 +172,47 @@ export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistr
     };
     client.onGetBoundMedia = async (): Promise<BoundMedia[]> => {
         const videoElements = await tabRegistry.activeVideoElements();
+        const asbplayerInstances = await tabRegistry.asbplayerInstances();
         const allTabs = await browser.tabs.query({});
-        const tabStateById = new Map<number, { active: boolean; discarded: boolean }>();
+        const activeByTabId = new Map<number, boolean>();
 
         for (const tab of allTabs) {
             if (tab.id !== undefined) {
-                tabStateById.set(tab.id, { active: tab.active ?? false, discarded: tab.discarded ?? false });
+                activeByTabId.set(tab.id, tab.active ?? false);
             }
         }
 
-        const focusedTabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
-        const focusedTabId = focusedTabs[0]?.id;
+        const streamingMedia: BoundMedia[] = videoElements.map((videoElement) => ({
+            id: boundMediaId(`streaming:${videoElement.id}:${videoElement.src}`),
+            type: 'streaming',
+            title: videoElement.title,
+            faviconUrl: videoElement.faviconUrl,
+            loadedSubtitles: videoElement.subtitleTracks ?? [],
+            active: activeByTabId.get(videoElement.id) ?? false,
+        }));
 
-        return videoElements.map((videoElement) => {
-            const tabState = tabStateById.get(videoElement.id);
-            return {
-                tabId: videoElement.id,
-                src: videoElement.src,
-                title: videoElement.title,
-                faviconUrl: videoElement.faviconUrl,
-                subscribed: videoElement.subscribed,
-                synced: videoElement.synced,
-                loadedSubtitles: videoElement.loadedSubtitles,
-                syncedTimestamp: videoElement.syncedTimestamp,
-                active: tabState?.active ?? false,
-                focused: videoElement.id === focusedTabId,
-                discarded: tabState?.discarded ?? false,
-            };
-        });
+        // Include asbplayer webapp instances that have media loaded, excluding side-panel instances
+        const localMedia: BoundMedia[] = asbplayerInstances
+            .filter(
+                (asbplayer) =>
+                    asbplayer.tabId !== undefined &&
+                    !asbplayer.sidePanel &&
+                    asbplayer.syncedVideoElement === undefined &&
+                    asbplayer.loadedSubtitles
+            )
+            .map((asbplayer) => {
+                const loadedSubtitles = asbplayer.subtitleTracks ?? [];
+                const [firstTrack] = loadedSubtitles;
+                return {
+                    id: boundMediaId(`local:${asbplayer.id}`),
+                    type: 'local',
+                    title: firstTrack === undefined ? undefined : withoutExtension(firstTrack.fileName),
+                    loadedSubtitles,
+                    active: activeByTabId.get(asbplayer.tabId!) ?? false,
+                };
+            });
+
+        return [...streamingMedia, ...localMedia];
     };
 };
 

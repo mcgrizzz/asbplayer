@@ -1067,7 +1067,7 @@ function App({
 
             const { granted, denied } = await requestPermissions(allHandles);
             if (denied.length > 0) {
-                handleError(t('error.restoreSessionPermissionDenied'));
+                handleError(t('error.restoreSessionFailed'));
                 return;
             }
 

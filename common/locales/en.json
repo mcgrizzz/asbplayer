@@ -204,7 +204,6 @@
         "unknownExtension": "Unable to determine extension of {{fileName}}",
         "unsupportedExtension": "Unsupported extension {{extension}}",
         "videoPlayerDragAndDropNotAllowed": "Video player cannot receive dropped files. Drop outside of the video frame instead.",
-        "restoreSessionPermissionDenied": "Permission denied. Unable to restore last session.",
         "restoreSessionFailed": "Failed to restore last session. The files may have been moved or deleted."
     },
     "extension": {

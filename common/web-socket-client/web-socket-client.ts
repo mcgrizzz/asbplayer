@@ -63,6 +63,19 @@ interface GetBoundMediaResponseBody {
     media: BoundMedia[];
 }
 
+export interface GetSubtitlesCommand {
+    command: 'get-subtitles';
+    messageId: string;
+    body: {
+        mediaId?: string;
+        trackNumber?: number;
+    };
+}
+
+interface GetSubtitlesResponseBody {
+    srt: string;
+}
+
 export class WebSocketClient {
     private _socket?: WebSocket;
     private _pingInterval?: NodeJS.Timeout;
@@ -74,6 +87,7 @@ export class WebSocketClient {
     onLoadSubtitles?: (command: LoadSubtitlesCommand) => Promise<void>;
     onSeekTimestamp?: (command: SeekTimestampCommand) => Promise<void>;
     onGetBoundMedia?: () => Promise<BoundMedia[]>;
+    onGetSubtitles?: (mediaId: string | undefined, trackNumber: number | undefined) => Promise<string>;
 
     get socket() {
         return this._socket;
@@ -165,6 +179,17 @@ export class WebSocketClient {
                             };
                             this._socket?.send(JSON.stringify(response));
                         }
+                    } else if (payload.command === 'get-subtitles') {
+                        if (this.onGetSubtitles !== undefined) {
+                            const messageId = payload.messageId;
+                            const srt = await this.onGetSubtitles(payload.body?.mediaId, payload.body?.trackNumber);
+                            const response: Response<GetSubtitlesResponseBody> = {
+                                command: 'response',
+                                messageId,
+                                body: { srt },
+                            };
+                            this._socket?.send(JSON.stringify(response));
+                        }
                     }
                 }
             };
@@ -235,5 +260,6 @@ export class WebSocketClient {
         this.onSeekTimestamp = undefined;
         this.onLoadSubtitles = undefined;
         this.onGetBoundMedia = undefined;
+        this.onGetSubtitles = undefined;
     }
 }

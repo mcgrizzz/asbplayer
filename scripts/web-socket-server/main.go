@@ -331,6 +331,28 @@ func (forwarder forwarder) handleAsbplayerBoundMediaRequest(c echo.Context) erro
 	return c.JSONBlob(http.StatusOK, response.Body)
 }
 
+func (forwarder forwarder) handleAsbplayerSubtitlesRequest(c echo.Context) error {
+	body := map[string]interface{}{}
+	if mediaId := c.QueryParam("mediaId"); mediaId != "" {
+		body["mediaId"] = mediaId
+	}
+	if trackNumber := c.QueryParam("trackNumber"); trackNumber != "" {
+		if n, err := strconv.Atoi(trackNumber); err == nil {
+			body["trackNumber"] = n
+		}
+	}
+	command := clientCommand{Command: "get-subtitles", MessageId: uuid.NewString(), Body: body}
+	responseChannel := make(chan clientResponse)
+
+	go forwarder.publishMessageAndAwaitResponse(command, responseChannel)
+	response, ok := <-responseChannel
+	if !ok {
+		return echo.NewHTTPError(http.StatusInternalServerError, nil)
+	}
+
+	return c.JSONBlob(http.StatusOK, response.Body)
+}
+
 func (forwarder forwarder) disconnectWebsocketClients(c echo.Context) error {
 	forwarder.Mutex.Lock()
 	defer forwarder.Mutex.Unlock()
@@ -386,6 +408,7 @@ func main() {
 	e.POST("/asbplayer/load-subtitles", forwarder.handleAsbplayerLoadSubtitlesRequest)
 	e.POST("/asbplayer/seek", forwarder.handleAsbplayerSeekRequest)
 	e.GET("/asbplayer/bound-media", forwarder.handleAsbplayerBoundMediaRequest)
+	e.GET("/asbplayer/subtitles", forwarder.handleAsbplayerSubtitlesRequest)
 	e.OPTIONS("/", forwarder.handleOptionsRequest)
 	e.Logger.Fatal(e.Start(":" + port))
 }

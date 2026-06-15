@@ -14,8 +14,14 @@ import {
     ExtensionToVideoCommand,
     Message,
     PostMineAction,
+    LocalSubtitlesResponseMessage,
+    RequestLocalSubtitlesMessage,
+    RequestSubtitlesMessage,
+    RequestSubtitlesResponse,
+    SubtitleModel,
     ToggleVideoSelectMessage,
 } from '@project/common';
+import { subtitlesToSrt } from '@project/common/subtitle-reader/subtitles-to-srt';
 
 let client: WebSocketClient | undefined;
 
@@ -42,6 +48,55 @@ const cyrb53 = (str: string) => {
 };
 
 const boundMediaId = (key: string) => cyrb53(key);
+
+// Selects a single track's cues from a merged subtitle list
+const subtitlesForTrack = (subtitles: SubtitleModel[], trackNumber: number | undefined) => {
+    if (subtitles.length === 0) {
+        return subtitles;
+    }
+
+    //Default to lowest numbered loaded track if no trackNumber provided
+    const selectedTrack = trackNumber ?? Math.min(...subtitles.map((subtitle) => subtitle.track));
+    return subtitles.filter((subtitle) => subtitle.track === selectedTrack);
+};
+
+// Requests the loaded subtitles from a local asbplayer app instance
+const requestSubtitlesFromAsbplayer = (
+    tabRegistry: TabRegistry,
+    asbplayerId: string
+): Promise<SubtitleModel[] | undefined> => {
+    return new Promise((resolve) => {
+        const messageId = crypto.randomUUID();
+        let timeout: ReturnType<typeof setTimeout>;
+
+        const listener = (request: any) => {
+            if (
+                request?.sender === 'asbplayerv2' &&
+                request.message?.command === 'local-subtitles-response' &&
+                request.message.messageId === messageId
+            ) {
+                clearTimeout(timeout);
+                browser.runtime.onMessage.removeListener(listener);
+                resolve((request.message as LocalSubtitlesResponseMessage).subtitles);
+            }
+        };
+
+        timeout = setTimeout(() => {
+            browser.runtime.onMessage.removeListener(listener);
+            resolve(undefined);
+        }, 5000);
+
+        browser.runtime.onMessage.addListener(listener);
+        tabRegistry.publishCommandToAsbplayers({
+            asbplayerId,
+            commandFactory: (asbplayer): ExtensionToAsbPlayerCommand<RequestLocalSubtitlesMessage> => ({
+                sender: 'asbplayer-extension-to-player',
+                message: { command: 'request-local-subtitles', messageId },
+                asbplayerId: asbplayer.id,
+            }),
+        });
+    });
+};
 
 export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistry: TabRegistry) => {
     client?.unbind();
@@ -213,6 +268,52 @@ export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistr
             });
 
         return [...streamingMedia, ...localMedia];
+    };
+    client.onGetSubtitles = async (mediaId: string | undefined, trackNumber: number | undefined): Promise<string> => {
+        const videoElements = await tabRegistry.activeVideoElements();
+        let match: (typeof videoElements)[number] | undefined;
+
+        if (mediaId !== undefined) {
+            match = videoElements.find(
+                (videoElement) => boundMediaId(`streaming:${videoElement.id}:${videoElement.src}`) === mediaId
+            );
+        } else {
+            // Default to the active tab's video element
+            const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+            match = videoElements.find((videoElement) => videoElement.id === activeTab?.id);
+        }
+
+        const target = match && { tabId: match.id, src: match.src };
+
+        let subtitles: SubtitleModel[] | undefined;
+
+        if (target !== undefined) {
+            const requestSubtitlesCommand: ExtensionToVideoCommand<RequestSubtitlesMessage> = {
+                sender: 'asbplayer-extension-to-video',
+                src: target.src,
+                message: { command: 'request-subtitles' },
+            };
+
+            try {
+                const response = (await browser.tabs.sendMessage(target.tabId, requestSubtitlesCommand)) as
+                    | RequestSubtitlesResponse
+                    | undefined;
+                subtitles = response?.subtitles;
+            } catch (e) {
+                // Targeting a non-active/discarded tab can fail
+                subtitles = undefined;
+            }
+        } else if (mediaId !== undefined) {
+            // Fall back to a local asbplayer app instance (only resolvable by explicit mediaId)
+            const asbplayerInstances = await tabRegistry.asbplayerInstances();
+            const asbplayer = asbplayerInstances.find((instance) => boundMediaId(`local:${instance.id}`) === mediaId);
+
+            if (asbplayer !== undefined) {
+                subtitles = await requestSubtitlesFromAsbplayer(tabRegistry, asbplayer.id);
+            }
+        }
+
+        return subtitlesToSrt(subtitlesForTrack(subtitles ?? [], trackNumber));
     };
 };
 

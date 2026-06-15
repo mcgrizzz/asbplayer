@@ -7,6 +7,7 @@ import { useLocationHash } from '@project/common/hooks/use-location-hash';
 import {
     MediaFragment,
     OpenStatisticsOverlayMessage,
+    RequestLocalSubtitlesMessage,
     SubtitleModel,
     VideoTabModel,
     LegacyPlayerSyncMessage,
@@ -1229,6 +1230,9 @@ function App({
                 } else {
                     openStatisticsOverlay();
                 }
+            } else if (message.data.command === 'request-local-subtitles') {
+                const requestMessage = message.data as RequestLocalSubtitlesMessage;
+                extension.sendSubtitles(requestMessage.messageId, subtitles);
             }
         }
 

@@ -226,8 +226,6 @@ export function mockSurroundingSubtitles(
             originalEnd: afterTimestamp - offset,
             track: middleSubtitle.track,
             index: middleSubtitle.index,
-            richText: middleSubtitle.richText,
-            richTextOnHover: middleSubtitle.richTextOnHover,
         });
     }
 
@@ -241,8 +239,6 @@ export function mockSurroundingSubtitles(
             originalEnd: middleSubtitle.start - offset,
             track: middleSubtitle.track,
             index: middleSubtitle.index,
-            richText: middleSubtitle.richText,
-            richTextOnHover: middleSubtitle.richTextOnHover,
         });
     }
 
@@ -521,6 +517,27 @@ export function normalizeForSearch(text: string): string {
         .replace(/ł/g, 'l')
         .replace(/Ł/g, 'L')
         .normalize('NFC');
+}
+
+export function normalizeSearchText(text: string): string {
+    return text.normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+export function normalizedLookupTerms(...texts: Array<string | null | undefined>): string[] {
+    return Array.from(
+        new Set(
+            texts
+                .flatMap((text) => {
+                    if (!text) return [];
+                    const normalized = normalizeForSearch(text);
+                    if (!normalized.length || normalized === text) return [text];
+                    return [text, normalized];
+                })
+                .filter((text) => Boolean(text))
+                .map(normalizeSearchText)
+                .filter((text) => text.length)
+        )
+    );
 }
 
 // https://stackoverflow.com/questions/63116039/camelcase-to-kebab-case

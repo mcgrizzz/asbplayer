@@ -8,7 +8,7 @@ import {
     DictionaryBuildWaniKaniCacheStateErrorCode,
     DictionaryBuildWaniKaniCacheStateType,
     Fetcher,
-    RichSubtitleModel,
+    IndexedSubtitleModel,
     Token,
     Tokenization,
     TokenizedSubtitleModel,
@@ -84,7 +84,6 @@ const ASB_TOKEN_CLASS = 'asb-token';
 const ASB_TOKEN_HIGHLIGHT_CLASS = 'asb-token-highlight';
 const ASB_READING_CLASS = 'asb-reading';
 const ASB_FREQUENCY_CLASS = 'asb-frequency';
-// const ASB_FREQUENCY_HOVER_CLASS = 'asb-frequency-hover';
 const ASB_PITCH_ACCENT_CLASS = 'asb-pitch-accent';
 const ASB_PITCH_ACCENT_MORA_CLASS = 'asb-pitch-accent-mora';
 const ASB_PITCH_ACCENT_MORA_HIGH_CLASS = 'asb-pitch-accent-mora-high';
@@ -484,8 +483,6 @@ interface InternalSubtitleModel extends TokenizedSubtitleModel {
 
 function untokenize(s: InternalSubtitleModel) {
     s.__tokenized = undefined;
-    s.richText = undefined;
-    s.richTextOnHover = undefined;
     if (s.tokenization) {
         s.tokenization.tokens = s.tokenization.tokens.filter((t) => !(t as InternalToken).__internal);
         if (s.tokenization.tokens.length) {
@@ -513,7 +510,7 @@ function originalTokenization(tokenization: Tokenization | undefined): Tokenizat
     };
 }
 
-export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
+export class SubtitleAnnotations extends SubtitleCollection<IndexedSubtitleModel> {
     private _subtitles: InternalSubtitleModel[];
     private totalSubtitlesPerTrack: Map<number, number>;
     private readonly dictionaryProvider: DictionaryProvider;
@@ -524,7 +521,7 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
     private generateStatistics?: boolean; // A manual trigger will keep this a true for the remainder of this class's lifetime, unless auto is toggled off.
     private generateStatisticsRequested: boolean; // Prevent premature cancellation during statistics generation
     private subtitlesInterval?: ReturnType<typeof setInterval>;
-    private showingSubtitles?: RichSubtitleModel[];
+    private showingSubtitles?: IndexedSubtitleModel[];
     private showingNeedsRefreshCount: number;
     private buildLowerThreshold: number;
     private buildUpperThreshold: number;
@@ -561,7 +558,10 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
     private shouldCancelBuild: boolean; // Set to true to stop current build, checked after each async calls
     private tokenRequestFailedForTracks: Set<number>;
 
-    private readonly subtitleAnnotationsUpdated: (updatedSubtitles: RichSubtitleModel[], dt: DictionaryTrack[]) => void;
+    private readonly subtitleAnnotationsUpdated: (
+        updatedSubtitles: IndexedSubtitleModel[],
+        dt: DictionaryTrack[]
+    ) => void;
     private readonly getMediaTimeMs?: () => number;
 
     private removeBuildAnkiCacheStateChangeCB?: () => void;
@@ -575,7 +575,7 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
         settingsProvider: SettingsProvider,
         options: SubtitleCollectionOptions,
         mediaId: string,
-        subtitleAnnotationsUpdated: (updatedSubtitles: RichSubtitleModel[], dt: DictionaryTrack[]) => void,
+        subtitleAnnotationsUpdated: (updatedSubtitles: IndexedSubtitleModel[], dt: DictionaryTrack[]) => void,
         getMediaTimeMs?: () => number,
         fetcher?: Fetcher
     ) {
@@ -644,12 +644,10 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
                 );
             });
         if (!needsReset) {
-            // Preserve existing cache here so callers don't need to be aware of it
+            // Preserve the existing tokenization cache here so callers don't need to be aware of it.
             for (const s of subtitles) {
                 (s as InternalSubtitleModel).text = this._subtitles[s.index].text;
                 s.tokenization = this._subtitles[s.index].tokenization;
-                s.richText = this._subtitles[s.index].richText;
-                s.richTextOnHover = this._subtitles[s.index].richTextOnHover;
                 (s as InternalSubtitleModel).__tokenized = this._subtitles[s.index].__tokenized;
             }
         }
@@ -1128,7 +1126,7 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
         }, 100);
     }
 
-    private _getAnnotationsIndexes(init?: boolean, subtitles?: RichSubtitleModel[]) {
+    private _getAnnotationsIndexes(init?: boolean, subtitles?: IndexedSubtitleModel[]) {
         if (!subtitles?.length) {
             if (this.getMediaTimeMs) {
                 const slice = this.subtitlesAt(this.getMediaTimeMs());
@@ -1290,13 +1288,11 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
                                     return;
                                 }
                                 builtNewTokenization = true;
-                                const updatedSubtitles: RichSubtitleModel[] = [];
+                                const updatedSubtitles: IndexedSubtitleModel[] = [];
                                 if (tokenizationModel) {
                                     const { tokenization, reconstructedText } = tokenizationModel;
                                     const subtitle = this.subtitles[index];
                                     subtitle.tokenization = tokenization;
-                                    subtitle.richText = undefined;
-                                    subtitle.richTextOnHover = undefined;
                                     if (subtitle.originalText === undefined) subtitle.originalText = subtitle.text;
                                     subtitle.text = reconstructedText;
                                     subtitle.__tokenized = true;
@@ -1304,11 +1300,6 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
                                     this._recordTokenOccurrences(index, reconstructedText, tokenization, ts);
                                     if (generatingStatistics) {
                                         const sentence = { ...subtitle };
-                                        renderRichTextOntoSubtitles(
-                                            [sentence],
-                                            'subtitlePlayer',
-                                            this.trackStates.map((ts) => ts.dt)
-                                        );
                                         this.dictionaryStatistics.ingest(sentence); // Treat the entire source entry as a single sentence
                                         if (
                                             sentence.tokenization!.tokens.every(
@@ -1422,7 +1413,10 @@ export class SubtitleAnnotations extends SubtitleCollection<RichSubtitleModel> {
         }
     }
 
-    private async _buildTokenAndLemmaMap(profile: string | undefined, subtitles: RichSubtitleModel[]): Promise<void> {
+    private async _buildTokenAndLemmaMap(
+        profile: string | undefined,
+        subtitles: IndexedSubtitleModel[]
+    ): Promise<void> {
         const eventsPerTrack = new Map<number, string[]>();
         for (const subtitle of subtitles) {
             const eventsForTrack = eventsPerTrack.get(subtitle.track);
@@ -1964,34 +1958,70 @@ export const getAnnotationsForRender = (dt: DictionaryTrack, target: TokenAnnota
     };
 };
 
-export const renderRichTextOntoSubtitles = (
-    subtitles: RichSubtitleModel[],
+export const ANNOTATIONS_VIDEO_RENDER_BEHIND_MS = 15000; // Seeking backwards is usually 5-10s
+export const ANNOTATIONS_VIDEO_RENDER_AHEAD_MS = 60000; // Seeking forward is usually 5-30s
+
+export interface RenderedRichText {
+    richText?: string;
+    richTextOnHover?: string;
+}
+
+interface CachedRenderedRichText extends RenderedRichText {
+    text: string;
+    tokenization?: Tokenization;
+    tokenAnnotationTarget: TokenAnnotationConfigTarget;
+    dictionaryTracks?: DictionaryTrack[];
+}
+
+const cachedRichTextIsCurrent = (
+    cached: CachedRenderedRichText,
+    subtitle: RichTextRenderable,
     tokenAnnotationTarget: TokenAnnotationConfigTarget,
     dictionaryTracks: DictionaryTrack[] | undefined
-) => {
-    if (dictionaryTracks?.length !== defaultSettings.dictionaryTracks.length) {
-        for (const s of subtitles) {
-            s.richText = undefined;
-            s.richTextOnHover = undefined;
-        }
-        return;
-    }
+) =>
+    cached.text === subtitle.text &&
+    areTokenizationsEqual(cached.tokenization, subtitle.tokenization) &&
+    cached.tokenAnnotationTarget === tokenAnnotationTarget &&
+    cached.dictionaryTracks?.every((dt, i) => areDictionaryTracksEqual(dt, dictionaryTracks?.[i]));
+
+interface IndexRange {
+    min: number;
+    max: number;
+}
+
+export interface RichTextWindow {
+    range?: IndexRange;
+    buffer: Map<number, CachedRenderedRichText>;
+}
+
+export const emptyRichTextWindow = (): RichTextWindow => ({ buffer: new Map() });
+
+interface RichTextRenderable {
+    index: number;
+    text: string;
+    track: number;
+    tokenization?: Tokenization;
+}
+
+export const renderRichTextOntoSubtitles = (
+    subtitles: RichTextRenderable[],
+    tokenAnnotationTarget: TokenAnnotationConfigTarget,
+    dictionaryTracks: DictionaryTrack[] | undefined
+): Map<number, RenderedRichText> => {
+    const rendered = new Map<number, RenderedRichText>();
+    if (dictionaryTracks?.length !== defaultSettings.dictionaryTracks.length) return rendered;
 
     const trackAnnotations = dictionaryTracks.map((dt) => getAnnotationsForRender(dt, tokenAnnotationTarget));
     const allowAsciiReading = false; // Allowing is only for preview purposes for status names to show reading
 
     for (const subtitle of subtitles) {
-        if (!subtitle.tokenization) {
-            subtitle.richText = undefined;
-            subtitle.richTextOnHover = undefined;
-            continue;
-        }
+        if (!subtitle.tokenization) continue;
         const ta = trackAnnotations[subtitle.track];
         const hasExternalReading = subtitle.tokenization.tokens.some(
             (token) => !(token as InternalToken).__internal && token.readings.length > 0
         ); // Display external readings even if no annotations are enabled, unnecessary for richTextOnHover
 
-        subtitle.richText =
+        const richText =
             ta.isRichTextEnabled || hasExternalReading
                 ? computeRichText(subtitle.text, subtitle.tokenization, {
                       dt: ta.dt,
@@ -1999,14 +2029,81 @@ export const renderRichTextOntoSubtitles = (
                       allowAsciiReading,
                   })
                 : undefined;
-        subtitle.richTextOnHover = ta.isRichTextOnHoverEnabled
+        const richTextOnHover = ta.isRichTextOnHoverEnabled
             ? computeRichText(subtitle.text, subtitle.tokenization, {
                   dt: ta.dt,
                   enabledAnnotations: ta.richTextOnHoverEnabledAnnotations,
                   allowAsciiReading,
               })
             : undefined;
+
+        if (richText !== undefined || richTextOnHover !== undefined) {
+            rendered.set(subtitle.index, { richText, richTextOnHover });
+        }
     }
+
+    return rendered;
+};
+
+export const renderRichTextWindow = (
+    prev: RichTextWindow,
+    windowSubtitles: RichTextRenderable[],
+    tokenAnnotationTarget: TokenAnnotationConfigTarget,
+    dictionaryTracks: DictionaryTrack[] | undefined
+): RichTextWindow => {
+    if (!windowSubtitles.length) return emptyRichTextWindow();
+    const windowSubtitleIndexes = windowSubtitles.map((s) => s.index);
+    const range: IndexRange = { min: Math.min(...windowSubtitleIndexes), max: Math.max(...windowSubtitleIndexes) };
+    const buffer = new Map<number, CachedRenderedRichText>();
+
+    const toRender: RichTextRenderable[] = [];
+    for (const subtitle of windowSubtitles) {
+        if (prev.range && subtitle.index >= prev.range.min && subtitle.index <= prev.range.max) {
+            const reused = prev.buffer.get(subtitle.index);
+            if (reused && cachedRichTextIsCurrent(reused, subtitle, tokenAnnotationTarget, dictionaryTracks)) {
+                buffer.set(subtitle.index, reused);
+                continue;
+            }
+        }
+        toRender.push(subtitle);
+    }
+    if (toRender.length) {
+        const rendered = renderRichTextOntoSubtitles(toRender, tokenAnnotationTarget, dictionaryTracks);
+        for (const subtitle of toRender) {
+            const value = rendered.get(subtitle.index);
+            buffer.set(subtitle.index, {
+                ...value,
+                text: subtitle.text,
+                tokenization: subtitle.tokenization,
+                tokenAnnotationTarget,
+                dictionaryTracks,
+            });
+        }
+    }
+
+    return { range, buffer };
+};
+
+export const renderRichTextForSubtitle = (
+    window: RichTextWindow,
+    subtitle: RichTextRenderable,
+    tokenAnnotationTarget: TokenAnnotationConfigTarget,
+    dictionaryTracks: DictionaryTrack[] | undefined
+): RenderedRichText | undefined => {
+    const cached = window.buffer.get(subtitle.index);
+    if (cached && cachedRichTextIsCurrent(cached, subtitle, tokenAnnotationTarget, dictionaryTracks)) return cached;
+
+    const rendered = renderRichTextOntoSubtitles([subtitle], tokenAnnotationTarget, dictionaryTracks).get(
+        subtitle.index
+    );
+    window.buffer.set(subtitle.index, {
+        ...rendered,
+        text: subtitle.text,
+        tokenization: subtitle.tokenization,
+        tokenAnnotationTarget,
+        dictionaryTracks,
+    });
+    return rendered;
 };
 
 interface TokenStyleState {

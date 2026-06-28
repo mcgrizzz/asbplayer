@@ -67,7 +67,6 @@ const useSearchAnki = ({ anki, querier }: { anki: Anki; querier: (anki: Anki) =>
                 return;
             }
 
-            await new Promise((resolve) => setTimeout(() => resolve(undefined), 2000));
             setNotes(noteInfos);
         } catch (e) {
             setError(error);
@@ -217,14 +216,14 @@ export default function CardSelectView({
                         }}
                     />
                     {effectiveError && <Alert severity="error">{effectiveError}</Alert>}
-                    {!loading && notes.length === 0 && (
+                    {notes.length === 0 && (
                         <Box sx={{ display: 'flex', justifyContent: 'center', p: 1 }}>
                             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                                 {t('cardSelectUi.noResults')}
                             </Typography>
                         </Box>
                     )}
-                    {!loading && notes.length > 0 && (
+                    {notes.length > 0 && (
                         <List dense sx={{ flex: 1, overflow: 'auto' }}>
                             {notes.map((note) => {
                                 let preview = ankiSettings.sentenceField
@@ -235,13 +234,20 @@ export default function CardSelectView({
                                         ? (note.fields[ankiSettings.wordField]?.value ?? '')
                                         : '';
                                 }
+                                if (!preview) {
+                                    preview = String(note.noteId);
+                                }
                                 preview = preview.replace(/<[^>]+>/g, '').slice(0, 80);
                                 return (
                                     <ListItem
                                         key={note.noteId}
                                         sx={{ p: 0 }}
                                         secondaryAction={
-                                            <IconButton edge="end" onClick={() => handleUpdateSingle(note.noteId)}>
+                                            <IconButton
+                                                edge="end"
+                                                disabled={disabled || loading}
+                                                onClick={() => handleUpdateSingle(note.noteId)}
+                                            >
                                                 <NoteAddIcon />
                                             </IconButton>
                                         }
@@ -250,6 +256,7 @@ export default function CardSelectView({
                                             <Checkbox
                                                 edge="start"
                                                 size="small"
+                                                disabled={disabled || loading}
                                                 checked={selectedNoteIds.includes(note.noteId)}
                                                 tabIndex={-1}
                                                 disableRipple

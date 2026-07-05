@@ -7,6 +7,7 @@ import {
     dictionaryTrackEnabled,
 } from '@project/common/settings';
 import SettingsForm from '@project/common/components/SettingsForm';
+import { isFirefoxBuild } from '../../services/build-flags';
 import PanelIcon from '@project/common/components/PanelIcon';
 import LaunchIcon from '@mui/icons-material/Launch';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -237,6 +238,7 @@ const Popup = ({
                             extensionSupportsAutoCopyableTrackSetting
                             extensionSupportsDictionaryTokenStatusDisplayAlpha
                             extensionSupportsDictionaryYomitanMecab
+                            extensionSupportsAnimatedMediaFragment={!isFirefoxBuild}
                             forceVerticalTabs={false}
                             anki={anki}
                             chromeKeyBinds={chromeCommandBindsToKeyBinds(commands)}

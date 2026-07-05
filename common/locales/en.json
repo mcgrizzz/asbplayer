@@ -318,6 +318,7 @@
             "progressCompleted": "Exported {{current}} of {{total}}"
         },
         "playbackRate": "Playback Rate: {{rate}}",
+        "processingClip": "Processing clip…",
         "savedTimestamp": "Saved: {{timestamp}}",
         "updatedCard": "Updated card: {{result}}",
         "enabledRepeatPlayback": "Repeat playback: On",
@@ -397,6 +398,9 @@
         "mediaFragmentCaptureFormat": "Capture format",
         "mediaFragmentFormatScreenshot": "Screenshot",
         "mediaFragmentFormatVideoClip": "Video clip (local video only)",
+        "mediaFragmentFormatAnimatedWebp": "Animated WebP",
+        "animatedImageFps": "Animated image FPS",
+        "animatedImageQuality": "Animated image quality",
         "mediaFragmentMaxClipLength": "Max clip length",
         "mediaFragmentTrimEnd": "Clip trim end",
         "mediaFragmentTrimStart": "Clip trim start",

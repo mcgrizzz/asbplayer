@@ -7,7 +7,10 @@ import {
     RecordMediaAndForwardSubtitleMessage,
     VideoToExtensionCommand,
     ExtensionToVideoCommand,
+    ExtensionToOffscreenDocumentCommand,
     ScreenshotTakenMessage,
+    RecordingFinishedMessage,
+    EncodeMp3InServiceWorkerMessage,
     CardModel,
     AudioErrorCode,
     ImageErrorCode,
@@ -16,6 +19,9 @@ import {
 import { SettingsProvider } from '@project/common/settings';
 import { CardPublisher } from '../../services/card-publisher';
 import AudioRecorderService, { DrmProtectedStreamError } from '../../services/audio-recorder-service';
+import { recordAnimatedWebp, tabCaptureStreamId } from '../../services/video-capturer';
+import { ensureOffscreenAudioServiceDocument } from '../../services/offscreen-document';
+import { isFirefoxBuild } from '../../services/build-flags';
 
 export default class RecordMediaHandler {
     private readonly _audioRecorder: AudioRecorderService;
@@ -56,26 +62,73 @@ export default class RecordMediaHandler {
     ) {
         const message = recordMediaCommand.message;
         const subtitle = message.subtitle;
-        let audioPromise = undefined;
-        let imagePromise = undefined;
+        const tabId = senderTab.id!;
+        const src = recordMediaCommand.src;
+        let audioPromise: Promise<string> | undefined;
+        let imagePromise: Promise<string> | undefined;
         let imageModel: ImageModel | undefined = undefined;
         let audioModel: AudioModel | undefined = undefined;
         let encodeAsMp3 = false;
 
-        if (message.record) {
-            const time = (subtitle.end - subtitle.start) / message.playbackRate + message.audioPaddingEnd;
+        // Capture window (subtitle duration adjusted for playback rate + padding), shared by audio
+        // recording and the animated-WebP capture.
+        const windowMs = (subtitle.end - subtitle.start) / message.playbackRate + message.audioPaddingEnd;
 
-            if (message.postMineAction !== PostMineAction.showAnkiDialog) {
-                encodeAsMp3 = await this._settingsProvider.getSingle('preferMp3');
-            }
+        // Animated WebP is Chrome-only (relies on chrome.tabCapture) and captures audio together with
+        // the video in a single stream rather than via the offscreen audio recorder.
+        const mediaFragmentFormat = message.screenshot
+            ? await this._settingsProvider.getSingle('mediaFragmentFormat')
+            : 'jpeg';
+        const useAnimatedWebp = message.screenshot && mediaFragmentFormat === 'webp' && !isFirefoxBuild;
 
-            audioPromise = this._audioRecorder.startWithTimeout(time, encodeAsMp3, {
-                src: recordMediaCommand.src,
-                tabId: sender.tab?.id!,
+        if (message.record && message.postMineAction !== PostMineAction.showAnkiDialog) {
+            encodeAsMp3 = await this._settingsProvider.getSingle('preferMp3');
+        }
+
+        if (message.record && !useAnimatedWebp) {
+            audioPromise = this._audioRecorder.startWithTimeout(windowMs, encodeAsMp3, {
+                src,
+                tabId,
             });
         }
 
-        if (message.screenshot) {
+        if (useAnimatedWebp) {
+            const { maxWidth, maxHeight, rect, frameId } = message;
+            const fps = await this._settingsProvider.getSingle('animatedImageFps');
+            const quality = await this._settingsProvider.getSingle('animatedImageQuality');
+
+            try {
+                const streamId = await tabCaptureStreamId(tabId);
+                const { base64, audioBase64 } = await recordAnimatedWebp(
+                    tabId,
+                    src,
+                    streamId,
+                    windowMs,
+                    fps,
+                    quality,
+                    message.record,
+                    { maxWidth, maxHeight, rect, frameId }
+                );
+                imageModel = {
+                    base64,
+                    extension: 'webp',
+                    error: base64 ? undefined : ImageErrorCode.captureFailed,
+                };
+
+                if (message.record) {
+                    audioModel = await this._buildAnimatedAudioModel(audioBase64, encodeAsMp3, message);
+                }
+            } catch (e) {
+                console.error(e);
+                imageModel = { base64: '', extension: 'webp', error: ImageErrorCode.captureFailed };
+            }
+
+            // We bypassed the audio recorder and the screenshot path, which normally emit these. Send
+            // them so the binding leaves recording state (recording-finished) and restores the
+            // subtitles/controls hidden for a clean screenshot (screenshot-taken).
+            this._notifyRecordingFinished(src, tabId);
+            this._notifyScreenshotTaken(src, tabId);
+        } else if (message.screenshot) {
             const { maxWidth, maxHeight, rect, frameId } = message;
             const screenshotDelay = Math.max(
                 0,
@@ -83,22 +136,13 @@ export default class RecordMediaHandler {
                     ? message.mediaTimestamp - subtitle.start + message.audioPaddingStart
                     : message.imageDelay
             );
-            imagePromise = this._imageCapturer.capture(senderTab.id!, recordMediaCommand.src, screenshotDelay, {
+            imagePromise = this._imageCapturer.capture(tabId, src, screenshotDelay, {
                 maxWidth,
                 maxHeight,
                 rect,
                 frameId,
             });
-            imagePromise.finally(() => {
-                const screenshotTakenCommand: ExtensionToVideoCommand<ScreenshotTakenMessage> = {
-                    sender: 'asbplayer-extension-to-video',
-                    message: {
-                        command: 'screenshot-taken',
-                    },
-                    src: recordMediaCommand.src,
-                };
-                browser.tabs.sendMessage(senderTab.id!, screenshotTakenCommand);
-            });
+            imagePromise.finally(() => this._notifyScreenshotTaken(src, tabId));
         }
 
         if (audioPromise) {
@@ -132,8 +176,7 @@ export default class RecordMediaHandler {
         if (imagePromise) {
             try {
                 await imagePromise;
-
-                // Use the last screenshot taken to allow user to re-take screenshot while audio is recording
+                // Use the last screenshot taken to allow re-taking while audio records.
                 imageModel = {
                     base64: this._imageCapturer.lastImageBase64!,
                     extension: 'jpeg',
@@ -156,9 +199,68 @@ export default class RecordMediaHandler {
         };
 
         if (isBulkExport) {
-            this._cardPublisher.publishBulk(card, senderTab.id!, recordMediaCommand.src);
+            this._cardPublisher.publishBulk(card, tabId, src);
         } else {
-            this._cardPublisher.publish(card, message.postMineAction, senderTab.id!, recordMediaCommand.src);
+            this._cardPublisher.publish(card, message.postMineAction, tabId, src);
         }
+    }
+
+    // Build the audio model from the audio captured alongside the animated WebP, encoding to mp3 when
+    // requested.
+    private async _buildAnimatedAudioModel(
+        audioBase64: string | undefined,
+        encodeAsMp3: boolean,
+        message: RecordMediaAndForwardSubtitleMessage
+    ): Promise<AudioModel> {
+        const { audioPaddingStart: paddingStart, audioPaddingEnd: paddingEnd, playbackRate } = message;
+        const base: AudioModel = {
+            base64: '',
+            extension: encodeAsMp3 ? 'mp3' : 'webm',
+            paddingStart,
+            paddingEnd,
+            playbackRate,
+        };
+
+        if (!audioBase64) {
+            return base;
+        }
+
+        if (!encodeAsMp3) {
+            return { ...base, base64: audioBase64 };
+        }
+
+        const mp3Base64 = await this._encodeMp3(audioBase64);
+        return { ...base, base64: mp3Base64 };
+    }
+
+    private async _encodeMp3(audioBase64: string): Promise<string> {
+        await ensureOffscreenAudioServiceDocument();
+        const command: ExtensionToOffscreenDocumentCommand<EncodeMp3InServiceWorkerMessage> = {
+            sender: 'asbplayer-extension-to-offscreen-document',
+            message: {
+                command: 'encode-mp3',
+                base64: audioBase64,
+                extension: 'webm',
+            },
+        };
+        return (await browser.runtime.sendMessage(command)) as string;
+    }
+
+    private _notifyScreenshotTaken(src: string, tabId: number) {
+        const command: ExtensionToVideoCommand<ScreenshotTakenMessage> = {
+            sender: 'asbplayer-extension-to-video',
+            message: { command: 'screenshot-taken' },
+            src,
+        };
+        browser.tabs.sendMessage(tabId, command);
+    }
+
+    private _notifyRecordingFinished(src: string, tabId: number) {
+        const command: ExtensionToVideoCommand<RecordingFinishedMessage> = {
+            sender: 'asbplayer-extension-to-video',
+            message: { command: 'recording-finished' },
+            src,
+        };
+        browser.tabs.sendMessage(tabId, command).catch(() => {});
     }
 }

@@ -19,13 +19,21 @@ interface Props {
     settings: AsbplayerSettings;
     onSettingChanged: <K extends keyof AsbplayerSettings>(key: K, value: AsbplayerSettings[K]) => Promise<void>;
     showWebmMediaFragmentSettings?: boolean;
+    // only in chrome
+    animatedMediaFragmentSupported?: boolean;
 }
 
 const integerValueRegex = /^-?\d+$/;
 
-const MiningSettingsTab: React.FC<Props> = ({ settings, onSettingChanged, showWebmMediaFragmentSettings = true }) => {
+const MiningSettingsTab: React.FC<Props> = ({
+    settings,
+    onSettingChanged,
+    showWebmMediaFragmentSettings = true,
+    animatedMediaFragmentSupported = false,
+}) => {
     const { t } = useTranslation();
     const webmCaptureSupported = showWebmMediaFragmentSettings && isWebmMediaFragmentSupported();
+    const mediaFragmentFormatSelectable = webmCaptureSupported || animatedMediaFragmentSupported;
     const {
         audioPaddingStart,
         audioPaddingEnd,
@@ -35,6 +43,8 @@ const MiningSettingsTab: React.FC<Props> = ({ settings, onSettingChanged, showWe
         mediaFragmentTrimStart,
         mediaFragmentTrimEnd,
         mediaFragmentMaxClipLength,
+        animatedImageFps,
+        animatedImageQuality,
         streamingScreenshotDelay,
         surroundingSubtitlesCountRadius,
         surroundingSubtitlesTimeRadius,
@@ -234,7 +244,7 @@ const MiningSettingsTab: React.FC<Props> = ({ settings, onSettingChanged, showWe
                 }}
             />
             <SettingsSection>{t('settings.screenshots')}</SettingsSection>
-            {showWebmMediaFragmentSettings && webmCaptureSupported && (
+            {mediaFragmentFormatSelectable && (
                 <TextField
                     select
                     fullWidth
@@ -248,7 +258,12 @@ const MiningSettingsTab: React.FC<Props> = ({ settings, onSettingChanged, showWe
                     }
                 >
                     <MenuItem value="jpeg">{t('settings.mediaFragmentFormatScreenshot')}</MenuItem>
-                    <MenuItem value="webm">{t('settings.mediaFragmentFormatVideoClip')}</MenuItem>
+                    {webmCaptureSupported && (
+                        <MenuItem value="webm">{t('settings.mediaFragmentFormatVideoClip')}</MenuItem>
+                    )}
+                    {animatedMediaFragmentSupported && (
+                        <MenuItem value="webp">{t('settings.mediaFragmentFormatAnimatedWebp')}</MenuItem>
+                    )}
                 </TextField>
             )}
             <TextField
@@ -332,7 +347,44 @@ const MiningSettingsTab: React.FC<Props> = ({ settings, onSettingChanged, showWe
                     />
                 </>
             )}
-            {(!showWebmMediaFragmentSettings || mediaFragmentFormat === 'jpeg') && (
+            {animatedMediaFragmentSupported && mediaFragmentFormat === 'webp' && (
+                <>
+                    <TextField
+                        type="number"
+                        label={t('settings.animatedImageFps')}
+                        fullWidth
+                        value={animatedImageFps}
+                        color="primary"
+                        onChange={(event) => onSettingChanged('animatedImageFps', Number(event.target.value))}
+                        slotProps={{
+                            htmlInput: {
+                                min: 1,
+                                max: 60,
+                                step: 1,
+                            },
+                            input: {
+                                endAdornment: <InputAdornment position="end">fps</InputAdornment>,
+                            },
+                        }}
+                    />
+                    <TextField
+                        type="number"
+                        label={t('settings.animatedImageQuality')}
+                        fullWidth
+                        value={animatedImageQuality}
+                        color="primary"
+                        onChange={(event) => onSettingChanged('animatedImageQuality', Number(event.target.value))}
+                        slotProps={{
+                            htmlInput: {
+                                min: 0.1,
+                                max: 1,
+                                step: 0.05,
+                            },
+                        }}
+                    />
+                </>
+            )}
+            {mediaFragmentFormat === 'jpeg' && (
                 <TextField
                     type="number"
                     label={t('extension.settings.screenshotCaptureDelay')}

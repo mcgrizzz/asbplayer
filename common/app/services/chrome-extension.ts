@@ -119,7 +119,7 @@ export default class ChromeExtension {
     private readonly _responseResolves: { [key: string]: (value: any) => void } = {};
     private onMessageCallbacks: Array<(message: ExtensionMessage) => void>;
     private onTabsCallbacks: Array<(tabs: VideoTabModel[]) => void>;
-    private heartbeatInterval?: NodeJS.Timeout;
+    private heartbeatInterval?: ReturnType<typeof setInterval>;
 
     constructor(
         version?: string,
@@ -162,12 +162,12 @@ export default class ChromeExtension {
                 this.tabs = tabsCommand.message.tabs;
                 this.asbplayers = tabsCommand.message.asbplayers;
 
-                for (let c of this.onTabsCallbacks) {
+                for (const c of this.onTabsCallbacks) {
                     c(this.tabs);
                 }
 
                 if (tabsCommand.message.ackRequested) {
-                    let ackTabsMessage: AckTabsMessage = {
+                    const ackTabsMessage: AckTabsMessage = {
                         command: 'ackTabs',
                         id: id,
                         receivedTabs: this.tabs,
@@ -185,7 +185,7 @@ export default class ChromeExtension {
                 }
             } else {
                 const command = event.data as ExtensionToAsbPlayerCommand<Message>;
-                for (let c of this.onMessageCallbacks) {
+                for (const c of this.onMessageCallbacks) {
                     c({
                         data: command.message,
                         tabId: command.tabId,
@@ -401,7 +401,7 @@ export default class ChromeExtension {
                 src: src,
             };
             window.postMessage(command);
-            this._createResponsePromise(messageId).then(callback);
+            void this._createResponsePromise(messageId).then(callback);
         }
     }
 
@@ -528,7 +528,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return this._createResponsePromise(messageId) as Promise<RequestCopyHistoryResponse>;
+        return this._createResponsePromise<RequestCopyHistoryResponse>(messageId);
     }
 
     deleteCopyHistory(id: string) {
@@ -542,7 +542,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return this._createResponsePromise(messageId) as Promise<void>;
+        return this._createResponsePromise(messageId);
     }
 
     saveCopyHistory(copyHistoryItem: CopyHistoryItem) {
@@ -556,7 +556,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return this._createResponsePromise(messageId) as Promise<void>;
+        return this._createResponsePromise(messageId);
     }
 
     clearCopyHistory() {
@@ -569,7 +569,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return this._createResponsePromise(messageId) as Promise<void>;
+        return this._createResponsePromise(messageId);
     }
 
     loadSubtitles(tabId: number, src: string) {
@@ -714,7 +714,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryGetAllTokens(profile: string | undefined, track: number): Promise<TokenResults> {
@@ -729,7 +729,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryGetByLemmaBulk(
@@ -749,7 +749,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionarySaveRecordLocalBulk(
@@ -769,7 +769,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryDeleteRecordLocalBulk(
@@ -787,7 +787,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryDeleteProfile(profile: string): Promise<DictionaryDeleteProfileResult> {
@@ -801,7 +801,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryExportRecordLocalBulk(): Promise<DictionaryExportRecordLocalResult> {
@@ -814,7 +814,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryImportRecordLocalBulk(
@@ -832,7 +832,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId);
+        return this._createResponsePromise(messageId);
     }
 
     async dictionaryGetRecords(
@@ -850,7 +850,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId, 60000); // Usually a few seconds
+        return this._createResponsePromise(messageId, 60000); // Usually a few seconds
     }
 
     async dictionaryUpdateRecords(
@@ -870,7 +870,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId, 60000); // Usually a few seconds
+        return this._createResponsePromise(messageId, 60000); // Usually a few seconds
     }
 
     async dictionaryDeleteRecords(
@@ -888,7 +888,7 @@ export default class ChromeExtension {
             },
         };
         window.postMessage(command);
-        return await this._createResponsePromise(messageId, 60000); // Usually a few seconds
+        return this._createResponsePromise(messageId, 60000); // Usually a few seconds
     }
 
     buildAnkiCache(profile: string | undefined, settings?: AsbplayerSettings): Promise<void> {
@@ -990,7 +990,7 @@ export default class ChromeExtension {
         return () => this._remove(callback, this.onMessageCallbacks);
     }
 
-    _remove(callback: Function, callbacks: Function[]) {
+    _remove<T>(callback: T, callbacks: T[]) {
         for (let i = callbacks.length - 1; i >= 0; --i) {
             if (callback === callbacks[i]) {
                 callbacks.splice(i, 1);

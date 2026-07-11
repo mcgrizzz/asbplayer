@@ -7,14 +7,6 @@ export interface BulkExportStartedPayload extends Message {
     total: number;
 }
 
-interface BulkExportCompletedPayload extends Message {
-    command: 'bulk-export-completed';
-}
-
-interface BulkExportCancelledPayload extends Message {
-    command: 'bulk-export-cancelled';
-}
-
 export default class BulkExportController {
     private readonly _context: Binding;
     private _exporting = false;
@@ -156,7 +148,7 @@ export default class BulkExportController {
             },
             src: this._context.registeredVideoSrc,
         };
-        browser.runtime.sendMessage(cancelledMessage);
+        void browser.runtime.sendMessage(cancelledMessage);
     }
 
     private _sendNext() {
@@ -165,13 +157,13 @@ export default class BulkExportController {
         }
 
         if (this._currentIndex >= this._queue.length) {
-            this._complete();
+            void this._complete();
             return;
         }
 
         const subtitles = this._context.subtitleController.subtitles;
         if (!subtitles || subtitles.length === 0) {
-            this._complete();
+            void this._complete();
             return;
         }
 
@@ -220,7 +212,7 @@ export default class BulkExportController {
             },
             src: this._context.registeredVideoSrc,
         };
-        browser.runtime.sendMessage(completedMessage);
+        void browser.runtime.sendMessage(completedMessage);
     }
 
     private _notifyProgress() {

@@ -773,7 +773,7 @@ export class DefaultKeyBinder implements KeyBinder {
             onToggleSubtitleTrack(event, track);
             return true;
         };
-        let unbindHandlers: (() => void)[] = [];
+        const unbindHandlers: (() => void)[] = [];
 
         for (let i = 0; i < shortcuts.length; ++i) {
             const handler = (event: KeyboardEvent) => delegate(event, i);
@@ -813,7 +813,7 @@ export class DefaultKeyBinder implements KeyBinder {
             return true;
         };
 
-        let unbindHandlers: (() => void)[] = [];
+        const unbindHandlers: (() => void)[] = [];
 
         for (let i = 0; i < 9; ++i) {
             const handler = (event: KeyboardEvent) => delegate(event, i);
@@ -852,7 +852,7 @@ export class DefaultKeyBinder implements KeyBinder {
             onUnblurTrack(event, track);
             return true;
         };
-        let unbindHandlers: (() => void)[] = [];
+        const unbindHandlers: (() => void)[] = [];
 
         for (let i = 0; i < shortcuts.length; ++i) {
             const handler = (event: KeyboardEvent) => delegate(event, i);
@@ -1016,10 +1016,10 @@ export class DefaultKeyBinder implements KeyBinder {
             onMarkHoveredToken(event, tokenStatus);
             return true;
         };
-        let unbindHandlers: (() => void)[] = [];
+        const unbindHandlers: (() => void)[] = [];
 
         for (let i = 0; i < shortcuts.length; ++i) {
-            const handler = (event: KeyboardEvent) => delegate(event, i as TokenStatus);
+            const handler = (event: KeyboardEvent) => delegate(event, i);
             const unbindHandler = shortcuts[i] ? this._bind(shortcuts[i], capture, handler) : () => {};
             unbindHandlers.push(unbindHandler);
         }

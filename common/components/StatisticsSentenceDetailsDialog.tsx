@@ -87,12 +87,14 @@ interface SentenceTableContext {
     onMineSentence: (sentence: DictionaryStatisticsSentence) => void;
 }
 
-const SentenceTable = ({ style, context, ...rest }: TableProps & ContextProp<SentenceTableContext>) => (
-    <Table {...rest} style={style} />
-);
+const SentenceTable = ({ style, context, ...rest }: TableProps & ContextProp<SentenceTableContext>) => {
+    void context;
+    return <Table {...rest} style={style} />;
+};
 
 const SentenceTableBody = React.forwardRef<HTMLTableSectionElement, TableBodyProps & ContextProp<SentenceTableContext>>(
     function SentenceTableBody({ context, ...rest }, ref) {
+        void context;
         return <TableBody {...rest} ref={ref} />;
     }
 );
@@ -202,7 +204,7 @@ const SentenceRowCells = React.memo(function SentenceRowCells({
                 }}
             >
                 <span
-                    style={tokenAnnotationStyleValues(tokenAnnotationConfig) as React.CSSProperties}
+                    style={tokenAnnotationStyleValues(tokenAnnotationConfig)}
                     dangerouslySetInnerHTML={{
                         __html: getAnnotationsHtml(sentence.text, rendered?.richText, rendered?.richTextOnHover),
                     }}
@@ -398,7 +400,7 @@ export default function StatisticsSentenceDetailsDialog({
         () => ({
             small: smallScreen,
             miningEnabled,
-            mineTooltip: mineTooltip!,
+            mineTooltip: mineTooltip,
             maximumDisplayedTimestamp,
             dictionaryTracks,
             richTextWindowRef,

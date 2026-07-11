@@ -21,7 +21,7 @@ interface MineSubtitleResponseBody {
     published: boolean;
 }
 
-interface LoadSubtitlesResponseBody {}
+type LoadSubtitlesResponseBody = Record<string, never>;
 
 export interface SubtitleFile {
     base64: string;
@@ -47,7 +47,7 @@ export interface SeekTimestampCommand {
 export interface GetBoundMediaCommand {
     command: 'get-bound-media';
     messageId: string;
-    body: {};
+    body: Record<string, never>;
 }
 
 export interface BoundMedia {
@@ -85,7 +85,7 @@ interface GetSubtitlesResponseBody {
 
 export class WebSocketClient {
     private _socket?: WebSocket;
-    private _pingInterval?: NodeJS.Timeout;
+    private _pingInterval?: ReturnType<typeof setInterval>;
     private _lastPingTimestampMs?: number;
     private _pongReceived: boolean = false;
     private _pingPromises: { resolve: (value: unknown) => void; reject: (error: any) => void }[] = [];
@@ -117,7 +117,7 @@ export class WebSocketClient {
                 }
 
                 this._pingPromises = [];
-                this._connect(url);
+                void this._connect(url);
             } else {
                 this.ping().catch(console.info);
             }
@@ -169,7 +169,7 @@ export class WebSocketClient {
                     } else if (payload.command === 'seek-timestamp') {
                         const messageId = payload.messageId;
                         await this.onSeekTimestamp?.(payload);
-                        const response: Response<{}> = {
+                        const response: Response<Record<string, never>> = {
                             command: 'response',
                             messageId,
                             body: {},

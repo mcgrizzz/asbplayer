@@ -289,7 +289,7 @@ export default function VideoDataSyncUi({ bridge }: Props) {
                     open={subtitleTrackSelectorOpen}
                     disabled={subtitleTrackSelectorDisabled}
                     isLoading={isLoading}
-                    suggestedName={suggestedName || document.title}
+                    suggestedName={suggestedName}
                     subtitleTracks={subtitleTrackSelectorTracks}
                     onSubtitleTracks={setSubtitleTrackSelectorTracks}
                     selectedSubtitleTrackIds={subtitleTrackSelectorSelectedTrackIds}

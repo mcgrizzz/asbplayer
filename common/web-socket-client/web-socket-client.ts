@@ -9,6 +9,7 @@ export interface MineSubtitleCommand {
         fields: { [key: string]: string };
         postMineAction: number;
         mediaId?: string;
+        noteId?: number;
     };
 }
 

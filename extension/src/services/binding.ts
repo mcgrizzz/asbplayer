@@ -1358,6 +1358,7 @@ export default class Binding {
         word,
         customFieldValues,
         isBulkExport,
+        noteId,
     }: CopySubtitleMessage) {
         if (!subtitle || !surroundingSubtitles) {
             return;
@@ -1420,6 +1421,7 @@ export default class Binding {
                 word,
                 customFieldValues,
                 isBulkExport,
+                noteId,
                 ...this._imageCaptureParams,
             },
             src: this._registeredVideoSrc,

@@ -139,7 +139,7 @@ export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistr
     };
 
     client.onMineSubtitle = async ({
-        body: { fields: receivedFields, postMineAction: receivedPostMineAction, mediaId },
+        body: { fields: receivedFields, postMineAction: receivedPostMineAction, mediaId, noteId },
     }: MineSubtitleCommand) => {
         if (mediaId !== undefined) {
             const target = await resolveMediaTarget(tabRegistry, mediaId);
@@ -173,6 +173,7 @@ export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistr
                             text,
                             postMineAction,
                             customFieldValues,
+                            noteId,
                         },
                         src: videoElement.src,
                     };
@@ -231,6 +232,7 @@ export const bindWebSocketClient = async (settings: SettingsProvider, tabRegistr
                                 text,
                                 postMineAction,
                                 customFieldValues,
+                                noteId,
                             },
                             src: videoElement.src,
                         };

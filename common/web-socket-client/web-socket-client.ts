@@ -8,6 +8,7 @@ export interface MineSubtitleCommand {
     body: {
         fields: { [key: string]: string };
         postMineAction: number;
+        mediaId?: string;
     };
 }
 
@@ -41,6 +42,7 @@ export interface SeekTimestampCommand {
     messageId: string;
     body: {
         timestamp: number;
+        mediaId?: string;
     };
 }
 

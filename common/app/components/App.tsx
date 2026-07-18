@@ -991,16 +991,21 @@ function App({
         setTab(tab);
     }, []);
 
+    const validateFiles = useCallback(
+        (files: FileWithId[]) => {
+            try {
+                extractSources(files);
+                return true;
+            } catch (e) {
+                handleError(e);
+                return false;
+            }
+        },
+        [handleError]
+    );
+
     const handleFiles = useCallback(
-        ({
-            files,
-            flattenSubtitleFiles,
-            doNotLoad,
-        }: {
-            files: FileWithId[];
-            flattenSubtitleFiles?: boolean;
-            doNotLoad?: boolean;
-        }): boolean => {
+        ({ files, flattenSubtitleFiles }: { files: FileWithId[]; flattenSubtitleFiles?: boolean }): boolean => {
             try {
                 const mediaSources = extractSources(files);
                 let videoFile = mediaSources.videoFile;
@@ -1008,10 +1013,6 @@ function App({
 
                 if (videoFile || subtitleFiles.length > 0) {
                     setJumpToSubtitle(undefined);
-                }
-
-                if (doNotLoad) {
-                    return true;
                 }
 
                 setSources((previous) => {
@@ -1069,7 +1070,6 @@ function App({
 
                 return true;
             } catch (e) {
-                console.error(e);
                 handleError(e);
                 return false;
             }
@@ -1464,9 +1464,9 @@ function App({
     );
 
     const handleFileSelector = useCallback(
-        async (params?: { doNotLoad?: boolean }) => {
+        async (params?: { buffered?: boolean }) => {
             if (!supportsFileSystemAccess()) {
-                if (params?.doNotLoad) {
+                if (params?.buffered) {
                     bufferedFileInputRef.current?.click();
                 } else {
                     fileInputRef.current?.click();
@@ -1486,13 +1486,13 @@ function App({
 
                 if (files.length === 0) return;
 
-                if (handleFiles({ files, doNotLoad: params?.doNotLoad })) {
-                    if (params?.doNotLoad) {
-                        persistBufferedFileSessionHandles(handles);
-                    } else {
-                        persistFileSessionHandles(handles);
-                    }
+                if (params?.buffered && validateFiles(files)) {
+                    persistBufferedFileSessionHandles(handles);
+                    return files;
+                }
 
+                if (!params?.buffered && handleFiles({ files })) {
+                    persistFileSessionHandles(handles);
                     return files;
                 }
             } catch (e) {
@@ -1500,11 +1500,11 @@ function App({
                 handleError(e);
             }
         },
-        [handleFiles, handleError, persistFileSessionHandles, persistBufferedFileSessionHandles]
+        [handleFiles, validateFiles, handleError, persistFileSessionHandles, persistBufferedFileSessionHandles]
     );
 
     const fileSelector = useMemo(
-        () => new DefaultFileSelector(() => void handleFileSelector({ doNotLoad: true })),
+        () => new DefaultFileSelector(() => handleFileSelector({ buffered: true })),
         [handleFileSelector]
     );
 
@@ -1522,12 +1522,12 @@ function App({
 
         if (files && files.length > 0) {
             const filesWithId = [...files].map((file) => ({ file, id: uuidv4() }));
-            if (handleFiles({ files: filesWithId, doNotLoad: true })) {
+            if (validateFiles(filesWithId)) {
                 fileSelector.publishFiles(filesWithId);
             }
             bufferedFileInputRef.current!.value = '';
         }
-    }, [handleFiles, fileSelector]);
+    }, [validateFiles, fileSelector]);
 
     const handleVideoElementSelected = useCallback(
         async (videoElement: VideoTabModel) => {

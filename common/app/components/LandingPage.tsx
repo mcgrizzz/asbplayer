@@ -124,8 +124,7 @@ export default function LandingPage({
                             </Trans>
                         )}
                     </Typography>
-                    {(canRestoreLastSession ||
-                        (extension.supportsLandingPageStreamingVideoElementSelector && videoElements.length > 0)) && (
+                    {
                         <Box
                             sx={{
                                 position: 'absolute',
@@ -165,15 +164,17 @@ export default function LandingPage({
                                         {t('landing.restoreLastSession')}
                                     </Button>
                                 )}
-                                {showVideoElementSelector && videoElements.length > 0 && (
-                                    <VideoElementSelector
-                                        videoElements={videoElements}
-                                        onVideoElementSelected={onVideoElementSelected}
-                                    />
-                                )}
+                                {showVideoElementSelector &&
+                                    extension.supportsLandingPageStreamingVideoElementSelector &&
+                                    videoElements.length > 0 && (
+                                        <VideoElementSelector
+                                            videoElements={videoElements}
+                                            onVideoElementSelected={onVideoElementSelected}
+                                        />
+                                    )}
                             </Box>
                         </Box>
-                    )}
+                    }
                 </div>
             </Fade>
         </Paper>
